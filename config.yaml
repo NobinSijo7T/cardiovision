@@ -1,0 +1,164 @@
+# ==============================================================================
+# CARDIOVISION Configuration
+# AI-Based Cardiovascular Disease Detection & Explainable ECG Analysis
+# ==============================================================================
+
+# --- Dataset ---
+dataset:
+  root_dir: "./ptb-xl-a-large-publicly-available-electrocardiography-dataset-1.0.3"
+  metadata_file: "ptbxl_database.csv"
+  scp_statements_file: "scp_statements.csv"
+  sampling_rate: 100  # 100 or 500
+  records_dir_100: "records100"
+  records_dir_500: "records500"
+
+# --- Label Mapping ---
+labels:
+  num_classes: 5
+  class_names:
+    - "Normal"
+    - "Myocardial Infarction"
+    - "Arrhythmia"
+    - "Left Ventricular Hypertrophy"
+    - "ST/T Wave Abnormalities"
+  # Priority order for multi-label resolution (highest to lowest)
+  priority_order:
+    - "Myocardial Infarction"
+    - "Arrhythmia"
+    - "Left Ventricular Hypertrophy"
+    - "ST/T Wave Abnormalities"
+    - "Normal"
+
+# --- Data Splitting ---
+splitting:
+  train_ratio: 0.70
+  val_ratio: 0.15
+  test_ratio: 0.15
+  random_seed: 42
+  patient_level: true
+
+# --- Signal Preprocessing ---
+preprocessing:
+  # Signal quality thresholds
+  signal_quality:
+    max_nan_ratio: 0.01
+    max_flat_ratio: 0.50
+    amplitude_min_mv: -10.0
+    amplitude_max_mv: 10.0
+
+  # Butterworth bandpass filter
+  butterworth:
+    low_cutoff_hz: 0.5
+    high_cutoff_hz: 40.0
+    filter_order: 4
+
+  # Pan-Tompkins R-peak detection
+  pan_tompkins:
+    integration_window_ms: 150
+    primary_lead: 1  # Lead II (0-indexed)
+    fallback_leads: [0, 5, 6]  # I, AVF, V1
+
+  # Min-Max normalization
+  normalization:
+    range_min: 0.0
+    range_max: 1.0
+
+# --- CWT Transform ---
+cwt:
+  wavelet: "morl"  # Morlet wavelet
+  scales_start: 1
+  scales_end: 128
+  image_size: [224, 224]
+  output_dir: "data/processed/cwt_images"
+  lead_mode: "composite"  # "individual" or "composite"
+  composite_layout: [3, 4]  # 3 rows × 4 columns for 12 leads
+  colormap: "jet"
+  save_format: "png"
+
+# --- Vision Transformer Architecture ---
+model:
+  name: "CardioViT"
+  input_size: [224, 224]
+  input_channels: 3
+  patch_size: 16
+  embedding_dim: 256
+  num_layers: 6
+  num_heads: 8
+  mlp_dim: 512
+  dropout: 0.1
+  attention_dropout: 0.1
+  num_classes: 5
+  use_cls_token: true
+  use_positional_embedding: true
+
+# --- Training ---
+training:
+  epochs: 50
+  batch_size: 16
+  num_workers: 4
+
+  optimizer:
+    name: "AdamW"
+    learning_rate: 0.0001
+    weight_decay: 0.01
+    betas: [0.9, 0.999]
+
+  scheduler:
+    name: "CosineAnnealingLR"
+    T_max: 50
+    eta_min: 0.000001
+
+  loss:
+    name: "CrossEntropyLoss"
+    use_class_weights: true
+    label_smoothing: 0.1
+
+  early_stopping:
+    enabled: true
+    monitor: "val_loss"
+    patience: 8
+    min_delta: 0.001
+
+  mixed_precision: true
+  gradient_clip_norm: 1.0
+
+  augmentation:
+    enabled: true
+    time_shift_max: 10  # samples
+    amplitude_scale_range: [0.95, 1.05]
+    gaussian_noise_std: 0.005
+
+# --- Reproducibility ---
+reproducibility:
+  seed: 42
+  deterministic: true
+
+# --- GPU ---
+device:
+  use_cuda: true
+  fallback_to_cpu: true
+
+# --- Output Directories ---
+output:
+  checkpoints_dir: "models/checkpoints"
+  figures_dir: "outputs/figures"
+  predictions_dir: "outputs/predictions"
+  explanations_dir: "outputs/explanations"
+  metrics_dir: "outputs/metrics"
+  dataset_report: "outputs/dataset_report.json"
+  training_log: "outputs/training_log.csv"
+  splits_dir: "data/splits"
+
+# --- Explainability ---
+explainability:
+  method: "gradcam_vit"
+  target_layer: -1  # Last transformer block
+  colormap: "jet"
+  alpha: 0.5  # Overlay transparency
+
+# --- Streamlit ---
+streamlit:
+  page_title: "CardioVision"
+  page_icon: "❤️"
+  layout: "wide"
+  disclaimer: "⚠️ This is an AI-assisted analysis tool for research purposes only. It does not provide a definitive medical diagnosis. Always consult a qualified healthcare professional."

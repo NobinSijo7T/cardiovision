@@ -1,0 +1,27 @@
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE files
+.vscode/
+.idea/
+
+# Datasets and outputs
+ptb-xl-a-large-publicly-available-electrocardiography-dataset-*/
+outputs/
+
+# Logs
+*.log
+
+# Pytest
+.pytest_cache/

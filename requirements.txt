@@ -1,0 +1,33 @@
+# CARDIOVISION - Requirements
+# AI-Based Cardiovascular Disease Detection & Explainable ECG Analysis
+
+# Core ML
+torch>=2.0.0
+torchvision>=0.15.0
+
+# Data & Scientific Computing
+numpy>=1.24.0
+pandas>=2.0.0
+scipy>=1.10.0
+PyWavelets>=1.4.0
+
+# ECG Signal Processing
+wfdb>=4.1.0
+
+# Machine Learning Utilities
+scikit-learn>=1.3.0
+
+# Visualization
+matplotlib>=3.7.0
+seaborn>=0.12.0
+Pillow>=9.5.0
+
+# Web Interface
+streamlit>=1.28.0
+
+# Utilities
+tqdm>=4.65.0
+PyYAML>=6.0
+
+# Testing
+pytest>=7.4.0
