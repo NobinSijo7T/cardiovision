@@ -11,8 +11,6 @@ import pywt
 from PIL import Image
 import matplotlib
 matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-import matplotlib.cm as cm
 
 from src.utils.logger import get_logger
 
@@ -73,7 +71,7 @@ def scalogram_to_image(
         normalized = np.zeros_like(coefficients)
 
     # Apply colormap
-    cmap = cm.get_cmap(colormap)
+    cmap = matplotlib.colormaps[colormap]
     colored = cmap(normalized)[:, :, :3]  # Drop alpha channel
 
     # Resize to target size

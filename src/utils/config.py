@@ -324,10 +324,36 @@ def load_config(config_path: Optional[str] = None) -> Config:
     if not config_path.exists():
         raise FileNotFoundError(f"Configuration file not found: {config_path}")
 
+    config_dir = config_path.parent.resolve()
+
     with open(config_path, 'r', encoding='utf-8') as f:
         raw = yaml.safe_load(f)
 
-    return _build_config_from_dict(raw)
+    cfg = _build_config_from_dict(raw)
+
+    def _resolve_relative_path(path_value: str) -> str:
+        path = Path(path_value)
+        if path.is_absolute():
+            return str(path)
+        return str((config_dir / path).resolve())
+
+    cfg.dataset.root_dir = _resolve_relative_path(cfg.dataset.root_dir)
+
+    for attr in [
+        "checkpoints_dir",
+        "figures_dir",
+        "predictions_dir",
+        "explanations_dir",
+        "metrics_dir",
+        "dataset_report",
+        "training_log",
+        "splits_dir",
+    ]:
+        setattr(cfg.output, attr, _resolve_relative_path(getattr(cfg.output, attr)))
+
+    cfg.cwt.output_dir = _resolve_relative_path(cfg.cwt.output_dir)
+
+    return cfg
 
 
 def get_project_root() -> Path:

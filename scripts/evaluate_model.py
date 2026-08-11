@@ -7,6 +7,10 @@ import sys
 from pathlib import Path
 import json
 
+from _bootstrap import ensure_project_venv
+
+ensure_project_venv()
+
 import pandas as pd
 import torch
 

@@ -5,7 +5,7 @@
 
 # --- Dataset ---
 dataset:
-  root_dir: "./ptb-xl-a-large-publicly-available-electrocardiography-dataset-1.0.3"
+  root_dir: "./dataset"
   metadata_file: "ptbxl_database.csv"
   scp_statements_file: "scp_statements.csv"
   sampling_rate: 100  # 100 or 500

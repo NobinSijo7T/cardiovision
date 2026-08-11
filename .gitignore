@@ -16,9 +16,19 @@ venv.bak/
 .vscode/
 .idea/
 
+# Archives
+*.zip
+
 # Datasets and outputs
 ptb-xl-a-large-publicly-available-electrocardiography-dataset-*/
+data/
+dataset/
 outputs/
+
+# Frontend build artifacts
+frontend/.next/
+frontend/node_modules/
+frontend/out/
 
 # Logs
 *.log

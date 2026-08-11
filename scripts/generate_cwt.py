@@ -9,6 +9,10 @@ from pathlib import Path
 from multiprocessing import Pool, cpu_count
 from functools import partial
 
+from _bootstrap import ensure_project_venv
+
+ensure_project_venv()
+
 import pandas as pd
 from tqdm import tqdm
 import wfdb
