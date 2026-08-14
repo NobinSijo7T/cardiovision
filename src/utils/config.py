@@ -367,4 +367,6 @@ def get_device(cfg: Config) -> str:
     import torch
     if cfg.device.use_cuda and torch.cuda.is_available():
         return "cuda"
+    if cfg.device.use_cuda and not cfg.device.fallback_to_cpu:
+        raise RuntimeError("CUDA was requested but is not available, and fallback_to_cpu is disabled.")
     return "cpu"

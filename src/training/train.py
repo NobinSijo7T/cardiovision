@@ -51,8 +51,9 @@ def train_epoch(
     
     pbar = tqdm(dataloader, desc=f"Epoch {epoch_idx} [Train]", leave=False)
     for batch_idx, (inputs, targets) in enumerate(pbar):
-        inputs = inputs.to(device)
-        targets = targets.to(device)
+        non_blocking = device.type == "cuda"
+        inputs = inputs.to(device, non_blocking=non_blocking)
+        targets = targets.to(device, non_blocking=non_blocking)
         
         optimizer.zero_grad()
         

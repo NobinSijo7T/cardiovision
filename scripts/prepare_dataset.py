@@ -21,6 +21,14 @@ from src.utils.logger import setup_logger
 from src.data.metadata_parser import load_all_metadata
 from src.data.label_mapper import assign_labels
 from src.data.splitter import patient_level_split, save_splits
+from src.data.validation import (
+    build_class_distribution_report,
+    validate_metadata,
+    validate_record_files,
+    write_class_distribution_plot,
+    write_json,
+    write_patient_distribution,
+)
 
 def main():
     # Load configuration
@@ -39,13 +47,30 @@ def main():
     
     # 2. Map Labels
     df_labeled, mapping_stats = assign_labels(db_df)
-    
+
+    metadata_report, metadata_summary = validate_metadata(df_labeled)
+    file_report, missing_files, file_summary = validate_record_files(df_labeled, dataset_root)
+
     # Save mapping report
     report_path = Path(cfg.output.dataset_report)
     report_path.parent.mkdir(parents=True, exist_ok=True)
+    class_report = build_class_distribution_report(df_labeled)
+    dataset_report = {
+        "label_mapping": mapping_stats,
+        "metadata_validation": metadata_summary,
+        "file_validation": file_summary,
+        "class_distribution": class_report,
+    }
     with open(report_path, 'w', encoding='utf-8') as f:
-        json.dump(mapping_stats, f, indent=2, default=str)
+        json.dump(dataset_report, f, indent=2, default=str)
     logger.info(f"Saved dataset report to {report_path}")
+
+    reports_dir = Path(cfg.output.metrics_dir).parent / "preprocessing"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    metadata_report.to_csv(reports_dir / "preprocessing_report.csv", index=False)
+    missing_files.to_csv(reports_dir / "missing_files.csv", index=False)
+    write_patient_distribution(df_labeled, reports_dir / "patient_distribution.csv")
+    write_class_distribution_plot(df_labeled, Path(cfg.output.figures_dir) / "class_distribution.png")
     
     # 3. Patient-Level Splitting
     df_train, df_val, df_test = patient_level_split(
@@ -58,6 +83,13 @@ def main():
     
     # Save splits
     save_splits(df_train, df_val, df_test, output_dir=cfg.output.splits_dir)
+    split_summary = {
+        "train": {"records": len(df_train), "patients": df_train["patient_id"].nunique()},
+        "val": {"records": len(df_val), "patients": df_val["patient_id"].nunique()},
+        "test": {"records": len(df_test), "patients": df_test["patient_id"].nunique()},
+        "patient_leakage": False,
+    }
+    write_json(reports_dir / "preprocessing_summary.json", {**dataset_report, "splits": split_summary})
     logger.info("Dataset Preparation Complete")
 
 if __name__ == "__main__":

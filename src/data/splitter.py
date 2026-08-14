@@ -5,15 +5,57 @@ Patient-level stratified train/validation/test split.
 
 import json
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Dict, Iterable, Tuple
 
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import GroupShuffleSplit
 
 from src.utils.logger import get_logger
 
 logger = get_logger("cardiovision.data.splitter")
+
+
+def _dominant_patient_labels(df: pd.DataFrame) -> pd.DataFrame:
+    """Collapse ECG records to one deterministic stratification label per patient."""
+    rows = []
+    for patient_id, group in df.groupby("patient_id", sort=True):
+        counts = group["label"].value_counts()
+        dominant_label = int(counts.sort_index().idxmax())
+        rows.append({
+            "patient_id": patient_id,
+            "dominant_label": dominant_label,
+            "num_records": len(group),
+        })
+    return pd.DataFrame(rows)
+
+
+def _assign_patients_for_ratio(
+    patient_df: pd.DataFrame,
+    ratio: float,
+    rng: np.random.Generator,
+) -> set:
+    """Select patients class-by-class to approximate a stratified record ratio."""
+    selected = set()
+    for _, group in patient_df.groupby("dominant_label", sort=True):
+        shuffled = group.sample(frac=1.0, random_state=int(rng.integers(0, 2**31 - 1)))
+        target_records = max(1, int(round(shuffled["num_records"].sum() * ratio)))
+        running = 0
+        for row in shuffled.itertuples(index=False):
+            if running >= target_records and len(selected) > 0:
+                break
+            selected.add(row.patient_id)
+            running += int(row.num_records)
+    return selected
+
+
+def _assert_disjoint_patient_sets(splits: Iterable[Tuple[str, pd.DataFrame]]) -> None:
+    """Raise if any patient appears in more than one split."""
+    seen = {}
+    for split_name, split_df in splits:
+        for patient_id in split_df["patient_id"].unique():
+            if patient_id in seen:
+                raise AssertionError(f"Patient leakage: patient {patient_id} in {seen[patient_id]} and {split_name}")
+            seen[patient_id] = split_name
 
 
 def patient_level_split(
@@ -44,37 +86,25 @@ def patient_level_split(
     logger.info(f"Splitting dataset: train={train_ratio}, val={val_ratio}, test={test_ratio}")
     logger.info(f"Total records: {len(df)}, Unique patients: {df['patient_id'].nunique()}")
 
-    # Step 1: Split into train+val vs test
-    gss_test = GroupShuffleSplit(
-        n_splits=1,
-        test_size=test_ratio,
-        random_state=random_seed
-    )
-    train_val_idx, test_idx = next(gss_test.split(df, df['label'], groups=df['patient_id']))
-    df_train_val = df.iloc[train_val_idx]
-    df_test = df.iloc[test_idx]
+    rng = np.random.default_rng(random_seed)
+    patient_df = _dominant_patient_labels(df)
 
-    # Step 2: Split train+val into train vs val
-    val_fraction_of_train_val = val_ratio / (train_ratio + val_ratio)
-    gss_val = GroupShuffleSplit(
-        n_splits=1,
-        test_size=val_fraction_of_train_val,
-        random_state=random_seed
-    )
-    train_idx, val_idx = next(gss_val.split(
-        df_train_val, df_train_val['label'], groups=df_train_val['patient_id']
-    ))
-    df_train = df_train_val.iloc[train_idx]
-    df_val = df_train_val.iloc[val_idx]
+    test_patients = _assign_patients_for_ratio(patient_df, test_ratio, rng)
+    remaining_patients = patient_df[~patient_df["patient_id"].isin(test_patients)]
+    val_ratio_remaining = val_ratio / (train_ratio + val_ratio)
+    val_patients = _assign_patients_for_ratio(remaining_patients, val_ratio_remaining, rng)
+    train_patients = set(remaining_patients["patient_id"]) - val_patients
+
+    df_train = df[df["patient_id"].isin(train_patients)].copy()
+    df_val = df[df["patient_id"].isin(val_patients)].copy()
+    df_test = df[df["patient_id"].isin(test_patients)].copy()
 
     # Verify no patient leakage
-    train_patients = set(df_train['patient_id'].unique())
-    val_patients = set(df_val['patient_id'].unique())
-    test_patients = set(df_test['patient_id'].unique())
-
-    assert len(train_patients & val_patients) == 0, "Patient leakage between train and val!"
-    assert len(train_patients & test_patients) == 0, "Patient leakage between train and test!"
-    assert len(val_patients & test_patients) == 0, "Patient leakage between val and test!"
+    train_patients = set(df_train["patient_id"].unique())
+    val_patients = set(df_val["patient_id"].unique())
+    test_patients = set(df_test["patient_id"].unique())
+    _assert_disjoint_patient_sets([("train", df_train), ("val", df_val), ("test", df_test)])
+    assert len(df_train) + len(df_val) + len(df_test) == len(df), "Split record count mismatch"
 
     logger.info(f"Train: {len(df_train)} records, {len(train_patients)} patients")
     logger.info(f"Val:   {len(df_val)} records, {len(val_patients)} patients")
@@ -113,6 +143,7 @@ def save_splits(
             "num_records": len(split_df),
             "num_patients": split_df['patient_id'].nunique(),
             "class_distribution": split_df['label_name'].value_counts().to_dict(),
+            "label_distribution": split_df['label'].value_counts().sort_index().to_dict(),
         }
         filepath = output_path / f"{split_name}_split.json"
         with open(filepath, 'w', encoding='utf-8') as f:
@@ -124,6 +155,20 @@ def save_splits(
         csv_path = output_path / f"{split_name}_records.csv"
         split_df[['patient_id', 'label', 'label_name', 'filename_lr', 'filename_hr']].to_csv(csv_path)
         logger.info(f"Saved {split_name} records CSV to {csv_path}")
+
+    stats = {
+        split_name: {
+            "records": int(len(split_df)),
+            "patients": int(split_df["patient_id"].nunique()),
+            "class_distribution": {
+                str(k): int(v)
+                for k, v in split_df["label_name"].value_counts().sort_index().items()
+            },
+        }
+        for split_name, split_df in [("train", df_train), ("val", df_val), ("test", df_test)]
+    }
+    with open(output_path / "split_statistics.json", "w", encoding="utf-8") as f:
+        json.dump(stats, f, indent=2, default=str)
 
 
 def load_split_ids(splits_dir: str = "data/splits") -> Dict[str, list]:

@@ -9,7 +9,7 @@ from typing import Optional, Tuple, List, Dict
 import numpy as np
 import pandas as pd
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, WeightedRandomSampler
 from PIL import Image
 import wfdb
 
@@ -100,26 +100,27 @@ class ECGScalogramDataset(Dataset):
             image = self._load_pregenerated(ecg_id)
 
         if image is None:
-            # Fallback: return a zero tensor (should be rare after quality filtering)
-            image = torch.zeros(3, self.image_size[0], self.image_size[1])
-        else:
-            # Apply augmentation to signal-level data if needed
-            if self.augment:
-                image = self._apply_augmentation(image)
+            raise FileNotFoundError(
+                f"No valid scalogram for ecg_id={ecg_id}. Run scripts/generate_cwt.py "
+                "and inspect data/processed/preprocessing_failed_ecgs.csv."
+            )
 
-            if self.transform:
-                image = self.transform(image)
-            elif not isinstance(image, torch.Tensor):
-                # Convert numpy/PIL to tensor
-                if isinstance(image, np.ndarray):
-                    if image.ndim == 2:
-                        image = np.stack([image] * 3, axis=0)
-                    elif image.ndim == 3 and image.shape[2] == 3:
-                        image = image.transpose(2, 0, 1)
-                    image = torch.from_numpy(image).float()
-                elif isinstance(image, Image.Image):
-                    image = np.array(image.convert('RGB')).transpose(2, 0, 1)
-                    image = torch.from_numpy(image).float() / 255.0
+        if self.augment:
+            image = self._apply_augmentation(image)
+
+        if self.transform:
+            image = self.transform(image)
+        elif not isinstance(image, torch.Tensor):
+            # Convert numpy/PIL to tensor
+            if isinstance(image, np.ndarray):
+                if image.ndim == 2:
+                    image = np.stack([image] * 3, axis=0)
+                elif image.ndim == 3 and image.shape[2] == 3:
+                    image = image.transpose(2, 0, 1)
+                image = torch.from_numpy(image).float()
+            elif isinstance(image, Image.Image):
+                image = np.array(image.convert('RGB')).transpose(2, 0, 1)
+                image = torch.from_numpy(image).float() / 255.0
 
         return image, label
 
@@ -133,9 +134,9 @@ class ECGScalogramDataset(Dataset):
             logger.warning(f"Scalogram not found for ecg_id={ecg_id}: {img_path}")
             return None
 
-        img = Image.open(img_path).convert('RGB').resize(
-            (self.image_size[1], self.image_size[0]), Image.BILINEAR
-        )
+        img = Image.open(img_path).convert('RGB')
+        if img.size != (self.image_size[1], self.image_size[0]):
+            raise ValueError(f"Unexpected scalogram size for ecg_id={ecg_id}: {img.size}")
         return np.array(img).transpose(2, 0, 1).astype(np.float32) / 255.0
 
     def _generate_scalogram(self, row: pd.Series) -> Optional[np.ndarray]:
@@ -261,3 +262,21 @@ def create_data_loaders(
     )
 
     return train_loader, val_loader, test_loader
+
+
+def build_weighted_sampler(records_df: pd.DataFrame) -> WeightedRandomSampler:
+    """
+    Build a class-balanced sampler for training records.
+
+    This helper is intentionally separate from create_data_loaders so callers can
+    decide whether to use a sampler or ordinary shuffled batches.
+    """
+    labels = records_df["label"].astype(int).to_numpy()
+    class_counts = np.bincount(labels)
+    class_counts[class_counts == 0] = 1
+    sample_weights = np.asarray([1.0 / class_counts[label] for label in labels], dtype=np.float64)
+    return WeightedRandomSampler(
+        weights=torch.as_tensor(sample_weights, dtype=torch.double),
+        num_samples=len(sample_weights),
+        replacement=True,
+    )

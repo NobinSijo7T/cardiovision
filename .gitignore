@@ -24,6 +24,9 @@ ptb-xl-a-large-publicly-available-electrocardiography-dataset-*/
 data/
 dataset/
 outputs/
+models/checkpoints/*.pth
+!src/data/
+!src/data/*.py
 
 # Frontend build artifacts
 frontend/.next/

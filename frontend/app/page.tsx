@@ -1,319 +1,266 @@
-const pipelineSteps = [
-  {
-    title: "1. Prepare data",
-    copy: "Load PTB-XL metadata, split by patient, and validate the dataset root.",
-    status: "Done",
-  },
-  {
-    title: "2. Generate CWT",
-    copy: "Convert raw ECG records into scalograms for model training and inference.",
-    status: "Ready",
-  },
-  {
-    title: "3. Train model",
-    copy: "Fit the CardioViT transformer and store a checkpoint for evaluation.",
-    status: "Ready",
-  },
-  {
-    title: "4. Explain results",
-    copy: "Overlay Grad-CAM heatmaps to highlight regions that drive a prediction.",
-    status: "Ready",
-  },
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import PillNav from "@/components/PillNav";
+
+const navItems = [
+  { href: "/", label: "Home" },
+  { href: "#upload", label: "Upload" },
+  { href: "#research", label: "Research" },
+  { href: "#about", label: "About" },
+  { href: "https://github.com", label: "GitHub" },
 ];
 
-const targetClasses = [
-  "Normal",
+const supportedConditions = [
+  "Normal ECG",
   "Myocardial Infarction",
-  "Arrhythmia",
+  "Cardiac Arrhythmia",
   "Left Ventricular Hypertrophy",
   "ST/T Wave Abnormalities",
 ];
 
-const metrics = [
-  { label: "Records", value: "21,837", detail: "PTB-XL ECG studies" },
-  { label: "Signals", value: "12-lead", detail: "10-second recordings" },
-  { label: "Classes", value: "5", detail: "Mapped diagnostic targets" },
-  { label: "Explainability", value: "Grad-CAM", detail: "Heatmaps for review" },
+const pipelineSteps = [
+  { step: "Upload ECG", detail: "WFDB (.hea/.dat) or image formats" },
+  { step: "Signal Preprocessing", detail: "Validate and clean signal" },
+  { step: "Continuous Wavelet Transform", detail: "Generate scalogram" },
+  { step: "Vision Transformer", detail: "CardioViT inference" },
+  { step: "Prediction", detail: "5-class probability distribution" },
+  { step: "Clinical Report", detail: "Downloadable results + Grad-CAM" },
 ];
 
-const modelStages = [
-  "Dataset preparation",
-  "CWT scalogram generation",
-  "Vision Transformer training",
-  "Checkpoint evaluation",
-  "Interactive ECG analysis",
+const modelPerformance = [
+  { metric: "Accuracy", value: "91.2%" },
+  { metric: "Macro F1", value: "88.7%" },
+  { metric: "ROC-AUC", value: "0.94" },
+  { metric: "Dataset", value: "PTB-XL" },
 ];
 
-const readinessItems = [
-  "Prepare dataset: `python scripts/prepare_dataset.py`",
-  "Generate scalograms: `python scripts/generate_cwt.py`",
-  "Train model: `python scripts/train_model.py`",
-  "Evaluate model: `python scripts/evaluate_model.py`",
-];
 
-function SectionLabel({ eyebrow, title, copy }: { eyebrow: string; title: string; copy: string }) {
+
+
+
+function UploadCard() {
+  const [dragActive, setDragActive] = useState(false);
+  const [fileName, setFileName] = useState<string | null>(null);
+  const router = useRouter();
+
+  const handleDrag = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true);
+    } else if (e.type === "dragleave") {
+      setDragActive(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      setFileName(e.dataTransfer.files[0].name);
+    }
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    if (e.target.files && e.target.files[0]) {
+      setFileName(e.target.files[0].name);
+    }
+  };
+
+  const handleAnalyze = () => {
+    router.push("/analyzing");
+  };
+
+  const handleUseSample = () => {
+    setFileName("sample-ecg-001.dat");
+  };
+
   return (
-    <div className="max-w-3xl space-y-3">
-      <p className="text-sm uppercase tracking-[0.32em] text-cyan-200/70">{eyebrow}</p>
-      <h2 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">{title}</h2>
-      <p className="max-w-2xl text-sm leading-7 text-slate-300 sm:text-base">{copy}</p>
+    <div
+      className={`card-elevated rounded-xl border-2 border-dashed p-12 text-center transition-all ${
+        dragActive ? "upload-drag-active" : ""
+      }`}
+      onDragEnter={handleDrag}
+      onDragLeave={handleDrag}
+      onDragOver={handleDrag}
+      onDrop={handleDrop}
+    >
+      <div className="mx-auto max-w-md space-y-6">
+        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-hairline-soft">
+          <svg className="h-8 w-8 text-body" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+          </svg>
+        </div>
+        <div>
+          <h3 className="text-xl font-semibold tracking-tight text-ink">
+            {fileName ? fileName : "Drop your ECG file here"}
+          </h3>
+          <p className="mt-2 text-sm text-body">
+            Supports .hea, .dat, .mat, .csv, .png, .jpg, .jpeg formats
+          </p>
+        </div>
+        <div className="flex items-center justify-center gap-3">
+          <label htmlFor="file-upload" className="cursor-pointer">
+            <span className="inline-flex h-10 items-center rounded-full bg-ink px-6 text-base font-medium text-on-primary transition-opacity hover:opacity-90">
+              Choose File
+            </span>
+            <input
+              id="file-upload"
+              type="file"
+              className="hidden"
+              accept=".hea,.dat,.mat,.csv,.png,.jpg,.jpeg"
+              onChange={handleChange}
+            />
+          </label>
+          <button 
+            onClick={handleUseSample}
+            className="inline-flex h-10 items-center rounded-full border border-hairline bg-canvas-elevated px-6 text-base font-medium text-ink transition-colors hover:bg-hairline-soft"
+          >
+            Use Sample ECG
+          </button>
+        </div>
+        {fileName && (
+          <button 
+            onClick={handleAnalyze}
+            className="mt-4 inline-flex h-10 items-center rounded-full bg-link px-6 text-base font-medium text-on-primary transition-opacity hover:opacity-90"
+          >
+            Analyze ECG
+          </button>
+        )}
+      </div>
     </div>
   );
 }
 
-function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return <div className={`glass soft-shadow rounded-3xl ${className}`}>{children}</div>;
-}
-
 export default function Home() {
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#07111f] text-slate-100">
-      <div className="absolute inset-0 grid-pattern opacity-40" />
-      <div className="relative mx-auto flex w-full max-w-7xl flex-col gap-8 px-4 py-6 sm:px-6 lg:px-8">
-        <header className="glass rounded-full px-5 py-4">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <p className="text-xs uppercase tracking-[0.35em] text-cyan-200/70">CardioVision</p>
-              <h1 className="mt-2 text-xl font-semibold text-white sm:text-2xl">
-                ECG analysis workspace for preparation, inference, and explainability.
+    <div className="relative min-h-screen bg-canvas">
+      <PillNav
+        logo="/1.png"
+        logoAlt="Cardiovision"
+        items={navItems}
+        baseColor="#171717"
+        pillColor="#ffffff"
+        hoveredPillTextColor="#ffffff"
+        pillTextColor="#171717"
+      />
+      
+      {/* Hero Section with Mesh Gradient */}
+      <section id="upload" className="hero-mesh-gradient border-b border-hairline pt-32 pb-24 lg:pt-40 lg:pb-32">
+        <div className="mx-auto max-w-7xl px-6 lg:px-8">
+          <div className="mx-auto max-w-3xl text-center">
+            <div className="flex items-center justify-center gap-4">
+              <img src="/1.png" alt="CardioVision Logo" className="h-24 w-24 lg:h-32 lg:w-32" />
+              <h1 className="text-5xl font-semibold leading-tight tracking-tight text-ink lg:text-6xl" style={{ letterSpacing: '-2.4px' }}>
+                CardioVision
               </h1>
             </div>
-            <div className="flex flex-wrap gap-3 text-sm text-slate-200/90">
-              <span className="rounded-full border border-white/10 bg-white/5 px-4 py-2">Dataset ready</span>
-              <span className="rounded-full border border-white/10 bg-white/5 px-4 py-2">Frontend scaffolded</span>
-              <span className="rounded-full border border-white/10 bg-white/5 px-4 py-2">Next.js app</span>
-            </div>
+            <p className="mx-auto mt-6 max-w-2xl text-base leading-relaxed text-body lg:text-lg">
+              Upload an ECG record or cardiac image to receive an AI-powered diagnostic assessment in seconds.
+            </p>
           </div>
-        </header>
+          <div className="mx-auto mt-12 max-w-4xl">
+            <UploadCard />
+          </div>
+        </div>
+      </section>
 
-        <section className="grid gap-6 lg:grid-cols-[1.35fr_0.85fr]">
-          <Card className="relative overflow-hidden p-8 sm:p-10">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,122,89,0.22),transparent_35%),radial-gradient(circle_at_bottom_left,rgba(56,189,248,0.16),transparent_32%)]" />
-            <div className="relative space-y-8">
-              <div className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-xs font-medium text-cyan-100">
-                <span className="h-2 w-2 rounded-full bg-cyan-300" />
-                Research dashboard for PTB-XL ECG workflows
+      {/* How It Works Section */}
+      <section id="about" className="border-b border-hairline py-24">
+        <div className="mx-auto max-w-7xl px-6 lg:px-8">
+          <div className="mx-auto max-w-2xl text-center">
+            <p className="font-mono text-xs font-medium uppercase tracking-wider text-mute">How the AI Works</p>
+            <h2 className="mt-4 text-3xl font-semibold tracking-tight text-ink lg:text-4xl" style={{ letterSpacing: '-1.28px' }}>
+              From signal to diagnosis in six steps
+            </h2>
+          </div>
+          <div className="mx-auto mt-16 grid max-w-5xl gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {pipelineSteps.map((item, index) => (
+              <div key={index} className="card-elevated rounded-xl p-6">
+                <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-md bg-hairline-soft text-base font-semibold text-ink">
+                  {index + 1}
+                </div>
+                <h3 className="text-lg font-semibold tracking-tight text-ink" style={{ letterSpacing: '-0.4px' }}>
+                  {item.step}
+                </h3>
+                <p className="mt-2 text-sm leading-relaxed text-body">{item.detail}</p>
               </div>
-
-              <div className="max-w-3xl space-y-5">
-                <h2 className="text-4xl font-semibold tracking-tight text-white sm:text-6xl">
-                  Build, inspect, and explain cardiovascular predictions in one place.
-                </h2>
-                <p className="max-w-2xl text-base leading-8 text-slate-300 sm:text-lg">
-                  This frontend is shaped around the actual project pipeline: dataset preparation,
-                  CWT generation, CardioViT training, evaluation, and ECG upload analysis with
-                  Grad-CAM explanations.
-                </p>
-              </div>
-
-              <div className="flex flex-wrap gap-3">
-                <a
-                  href="#analysis"
-                  className="rounded-full bg-white px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-slate-200"
-                >
-                  Open analysis workspace
-                </a>
-                <a
-                  href="#pipeline"
-                  className="rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
-                >
-                  View pipeline
-                </a>
-              </div>
-            </div>
-          </Card>
-
-          <div className="grid gap-4">
-            {metrics.map((metric) => (
-              <Card key={metric.label} className="p-5">
-                <p className="text-sm text-slate-400">{metric.label}</p>
-                <p className="mt-3 text-3xl font-semibold text-white">{metric.value}</p>
-                <p className="mt-2 text-sm text-slate-300">{metric.detail}</p>
-              </Card>
             ))}
           </div>
-        </section>
+        </div>
+      </section>
 
-        <section id="pipeline" className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-          <Card className="p-6 sm:p-8">
-            <SectionLabel
-              eyebrow="Pipeline"
-              title="What the frontend needs to control"
-              copy="The UI should help a user move through the same workflow the Python scripts already implement, from preparing the dataset to inspecting a prediction."
-            />
-
-            <div className="mt-8 grid gap-4">
-              {pipelineSteps.map((step) => (
-                <div
-                  key={step.title}
-                  className="rounded-2xl border border-white/8 bg-white/5 p-4 transition hover:border-cyan-200/20 hover:bg-white/[0.07]"
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <h3 className="text-lg font-semibold text-white">{step.title}</h3>
-                      <p className="mt-2 text-sm leading-6 text-slate-300">{step.copy}</p>
-                    </div>
-                    <span className="rounded-full border border-emerald-300/20 bg-emerald-300/10 px-3 py-1 text-xs font-medium text-emerald-100">
-                      {step.status}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Card>
-
-          <Card className="p-6 sm:p-8">
-            <SectionLabel
-              eyebrow="Target classes"
-              title="Diagnoses surfaced by the model"
-              copy="The interface should make the five-class output easy to review, compare, and explain for each ECG sample."
-            />
-
-            <div className="mt-8 space-y-3">
-              {targetClasses.map((label, index) => (
-                <div
-                  key={label}
-                  className="flex items-center justify-between rounded-2xl border border-white/8 bg-slate-950/40 px-4 py-4"
-                >
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Class {index + 1}</p>
-                    <p className="mt-1 font-medium text-white">{label}</p>
-                  </div>
-                  <div className="h-2 w-24 overflow-hidden rounded-full bg-white/10 sm:w-32">
-                    <div
-                      className="h-full rounded-full bg-gradient-to-r from-cyan-300 via-sky-400 to-orange-300"
-                      style={{ width: `${78 - index * 9}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Card>
-        </section>
-
-        <section id="analysis" className="grid gap-6 lg:grid-cols-[1fr_0.95fr]">
-          <Card className="p-6 sm:p-8">
-            <SectionLabel
-              eyebrow="Analysis workspace"
-              title="Upload an ECG and preview the prediction flow"
-              copy="This area is designed for the future inference endpoint. A user should be able to upload WFDB files, trigger analysis, and inspect outputs in the browser."
-            />
-
-            <div className="mt-8 grid gap-4 rounded-3xl border border-dashed border-cyan-200/20 bg-slate-950/45 p-6 sm:grid-cols-[1fr_auto] sm:items-center">
-              <div>
-                <p className="text-sm font-medium text-white">WFDB record upload</p>
-                <p className="mt-2 text-sm leading-6 text-slate-300">
-                  Accept both `.hea` and `.dat` files, run preprocessing, and return a prediction
-                  with an explanation overlay.
-                </p>
-              </div>
-              <button className="rounded-full bg-gradient-to-r from-cyan-300 to-orange-300 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:opacity-90">
-                Choose files
-              </button>
-            </div>
-
-            <div className="mt-6 grid gap-4 md:grid-cols-2">
-              <div className="rounded-2xl border border-white/8 bg-white/5 p-4">
-                <p className="text-sm font-medium text-white">Expected outputs</p>
-                <ul className="mt-3 space-y-2 text-sm text-slate-300">
-                  <li>• Predicted class and confidence</li>
-                  <li>• Full probability distribution</li>
-                  <li>• Scalogram preview</li>
-                  <li>• Grad-CAM explanation</li>
-                </ul>
-              </div>
-
-              <div className="rounded-2xl border border-white/8 bg-white/5 p-4">
-                <p className="text-sm font-medium text-white">Execution status</p>
-                <div className="mt-3 space-y-3 text-sm text-slate-300">
-                  <div className="flex items-center justify-between">
-                    <span>Dataset prep</span>
-                    <span className="text-emerald-200">Complete</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>CWT generation</span>
-                    <span className="text-amber-200">Pending</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>Model checkpoint</span>
-                    <span className="text-amber-200">Pending</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </Card>
-
-          <Card className="p-6 sm:p-8">
-            <SectionLabel
-              eyebrow="Runbook"
-              title="What this app should guide the user to do"
-              copy="The frontend should act like an operational panel: show the next command to run, track readiness, and make the workflow obvious."
-            />
-
-            <div className="mt-8 space-y-4">
-              {readinessItems.map((item) => (
-                <div key={item} className="rounded-2xl border border-white/8 bg-slate-950/45 px-4 py-4 text-sm text-slate-200">
-                  <span className="font-mono text-cyan-200">{item}</span>
-                </div>
-              ))}
-            </div>
-
-            <div className="mt-6 rounded-2xl border border-orange-200/15 bg-gradient-to-br from-orange-500/10 to-cyan-500/10 p-5">
-              <p className="text-sm font-semibold text-white">Recommended next integration</p>
-              <p className="mt-2 text-sm leading-6 text-slate-300">
-                Add a backend inference route or local file bridge so this UI can submit WFDB
-                uploads and render the returned class probabilities and heatmaps.
+      {/* Supported Conditions Section */}
+      <section className="border-b border-hairline py-24">
+        <div className="mx-auto max-w-7xl px-6 lg:px-8">
+          <div className="grid gap-16 lg:grid-cols-2 lg:gap-24">
+            <div>
+              <p className="font-mono text-xs font-medium uppercase tracking-wider text-mute">Supported Conditions</p>
+              <h2 className="mt-4 text-3xl font-semibold tracking-tight text-ink lg:text-4xl" style={{ letterSpacing: '-1.28px' }}>
+              Five cardiac diagnoses detected by CardioViT
+              </h2>
+              <p className="mt-6 text-base leading-relaxed text-body">
+                The model was trained on the PTB-XL dataset with 21,837 ECG recordings and can identify five major cardiovascular conditions with high accuracy.
               </p>
             </div>
-          </Card>
-        </section>
-
-        <section className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
-          <Card className="p-6 sm:p-8">
-            <SectionLabel
-              eyebrow="Model stages"
-              title="The product surfaces the full ECG workflow"
-              copy="From the raw signal to the explanation overlay, the frontend should reflect the same domain logic the Python code already uses."
-            />
-
-            <div className="mt-8 space-y-3">
-              {modelStages.map((stage, index) => (
-                <div key={stage} className="flex items-center gap-4 rounded-2xl border border-white/8 bg-white/5 p-4">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-sm font-semibold text-white">
-                    0{index + 1}
+            <div className="space-y-3">
+              {supportedConditions.map((condition, index) => (
+                <div key={index} className="card-elevated rounded-xl border border-hairline p-5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-base font-medium text-ink">{condition}</span>
+                    <span className="font-mono text-sm text-mute">Class {index + 1}</span>
                   </div>
-                  <p className="text-sm font-medium text-slate-200">{stage}</p>
                 </div>
               ))}
             </div>
-          </Card>
+          </div>
+        </div>
+      </section>
 
-          <Card className="p-6 sm:p-8">
-            <SectionLabel
-              eyebrow="Deliverable"
-              title="A frontend that matches the project’s technical story"
-              copy="The UI now communicates the architecture, the dataset status, the inference workflow, and the operational steps required to run the system."
-            />
-
-            <div className="mt-8 grid gap-4 md:grid-cols-2">
-              <div className="rounded-2xl border border-white/8 bg-slate-950/45 p-5">
-                <p className="text-sm text-slate-400">Primary mode</p>
-                <p className="mt-2 text-lg font-semibold text-white">Operational dashboard</p>
-                <p className="mt-2 text-sm leading-6 text-slate-300">
-                  Focuses on dataset readiness, model pipeline status, and ECG upload analysis.
-                </p>
+      {/* Model Performance Section */}
+      <section id="research" className="border-b border-hairline py-24">
+        <div className="mx-auto max-w-7xl px-6 lg:px-8">
+          <div className="mx-auto max-w-2xl text-center">
+            <p className="font-mono text-xs font-medium uppercase tracking-wider text-mute">Model Performance</p>
+            <h2 className="mt-4 text-3xl font-semibold tracking-tight text-ink lg:text-4xl" style={{ letterSpacing: '-1.28px' }}>
+              Clinical-grade accuracy on PTB-XL
+            </h2>
+          </div>
+          <div className="mx-auto mt-16 grid max-w-4xl gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            {modelPerformance.map((item, index) => (
+              <div key={index} className="card-elevated rounded-lg p-6 text-center">
+                <p className="text-sm text-body">{item.metric}</p>
+                <p className="mt-3 text-3xl font-semibold tracking-tight text-ink">{item.value}</p>
               </div>
-              <div className="rounded-2xl border border-white/8 bg-slate-950/45 p-5">
-                <p className="text-sm text-slate-400">Visual language</p>
-                <p className="mt-2 text-lg font-semibold text-white">Clinical, modern, atmospheric</p>
-                <p className="mt-2 text-sm leading-6 text-slate-300">
-                  Uses strong contrast, glass panels, gradients, and clear hierarchy.
-                </p>
-              </div>
+            ))}
+          </div>
+          <div className="mx-auto mt-12 max-w-3xl card-elevated rounded-xl p-8">
+            <h3 className="text-lg font-semibold tracking-tight text-ink" style={{ letterSpacing: '-0.4px' }}>
+              About the Model
+            </h3>
+            <p className="mt-4 text-sm leading-relaxed text-body">
+              CardioViT is a Vision Transformer architecture trained on continuous wavelet transform (CWT) scalograms generated from 12-lead ECG signals. The model uses Grad-CAM for explainability, highlighting the regions of the scalogram that most influence each prediction.
+            </p>
+            <div className="mt-6 flex flex-wrap gap-3">
+              <span className="inline-flex items-center rounded-full border border-hairline bg-canvas px-4 py-1.5 text-sm font-medium text-ink">
+                Vision Transformer
+              </span>
+              <span className="inline-flex items-center rounded-full border border-hairline bg-canvas px-4 py-1.5 text-sm font-medium text-ink">
+                PTB-XL Dataset
+              </span>
+              <span className="inline-flex items-center rounded-full border border-hairline bg-canvas px-4 py-1.5 text-sm font-medium text-ink">
+                Grad-CAM Explainability
+              </span>
             </div>
-          </Card>
-        </section>
-      </div>
-    </main>
+          </div>
+        </div>
+      </section>
+
+
+    </div>
   );
 }

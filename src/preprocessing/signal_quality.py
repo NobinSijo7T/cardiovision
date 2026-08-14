@@ -6,6 +6,7 @@ Detects missing, corrupted, NaN, infinite, or unusable ECG recordings.
 from typing import Tuple, List
 
 import numpy as np
+from scipy import signal as scipy_signal
 
 from src.utils.logger import get_logger
 
@@ -127,3 +128,48 @@ def repair_signal(signal: np.ndarray) -> np.ndarray:
         repaired[:, lead_idx] = lead
 
     return repaired
+
+
+def clean_ecg_signal(
+    signal: np.ndarray,
+    sampling_rate: int,
+    amplitude_min_mv: float = -10.0,
+    amplitude_max_mv: float = 10.0,
+    powerline_hz: float = 50.0,
+) -> np.ndarray:
+    """
+    Repair invalid values, remove powerline noise when possible, clip abnormal
+    amplitudes, and center each lead.
+
+    Args:
+        signal: ECG signal array of shape (num_samples, num_leads).
+        sampling_rate: Sampling rate in Hz.
+        amplitude_min_mv: Lower clipping bound.
+        amplitude_max_mv: Upper clipping bound.
+        powerline_hz: Powerline notch frequency. Skipped if >= Nyquist.
+
+    Returns:
+        Cleaned signal array as float64.
+    """
+    cleaned = repair_signal(np.asarray(signal, dtype=np.float64))
+    cleaned = np.nan_to_num(
+        cleaned,
+        nan=0.0,
+        posinf=amplitude_max_mv,
+        neginf=amplitude_min_mv,
+    )
+    cleaned = np.clip(cleaned, amplitude_min_mv, amplitude_max_mv)
+
+    nyquist = sampling_rate / 2.0
+    if 0 < powerline_hz < nyquist:
+        b, a = scipy_signal.iirnotch(w0=powerline_hz / nyquist, Q=30.0)
+        for lead_idx in range(cleaned.shape[1]):
+            try:
+                padlen = min(3 * max(len(b), len(a)), cleaned.shape[0] - 1)
+                cleaned[:, lead_idx] = scipy_signal.filtfilt(b, a, cleaned[:, lead_idx], padlen=padlen)
+            except ValueError:
+                logger.warning(f"Powerline notch failed for lead {lead_idx}; using clipped signal.")
+
+    cleaned = cleaned - np.median(cleaned, axis=0, keepdims=True)
+    cleaned = np.clip(cleaned, amplitude_min_mv, amplitude_max_mv)
+    return cleaned

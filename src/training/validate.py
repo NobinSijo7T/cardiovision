@@ -55,8 +55,9 @@ def validate_epoch(
     
     pbar = tqdm(dataloader, desc=f"Epoch {epoch_idx} [{prefix}]", leave=False)
     for inputs, targets in pbar:
-        inputs = inputs.to(device)
-        targets = targets.to(device)
+        non_blocking = device.type == "cuda"
+        inputs = inputs.to(device, non_blocking=non_blocking)
+        targets = targets.to(device, non_blocking=non_blocking)
         
         # Forward pass
         outputs = model(inputs)
