@@ -16,6 +16,9 @@ venv.bak/
 .vscode/
 .idea/
 
+# Local Streamlit secrets
+.streamlit/secrets.toml
+
 # Archives
 *.zip
 

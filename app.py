@@ -157,6 +157,80 @@ def render_sidebar():
 def display_disclaimer():
     st.markdown(f'<div class="disclaimer-box">{cfg.streamlit.disclaimer}</div>', unsafe_allow_html=True)
 
+def get_groq_api_key():
+    api_key = os.environ.get("GROQ_API_KEY")
+    if api_key:
+        return api_key
+
+    try:
+        return st.secrets.get("GROQ_API_KEY") or st.secrets.get("groq_api_key")
+    except Exception:
+        return None
+
+def build_disease_guidance_prompt(results):
+    probabilities = "\n".join(
+        f"- {name}: {prob:.1%}"
+        for name, prob in sorted(results["probabilities"].items(), key=lambda item: item[1], reverse=True)
+    )
+    return f"""
+The CardioVision ECG model predicted: {results["predicted_class_name"]}
+Confidence: {results["confidence"]:.1%}
+
+Class probabilities:
+{probabilities}
+
+Explain this predicted cardiovascular finding for a patient-facing Streamlit app.
+Include:
+1. What this finding may mean in simple language
+2. Common symptoms or warning signs
+3. Sensible next steps
+4. When urgent medical care is needed
+5. A short reminder that this AI result is not a diagnosis
+
+Keep it concise, practical, and medically cautious.
+"""
+
+def stream_groq_disease_guidance(results):
+    api_key = get_groq_api_key()
+    if not api_key:
+        yield (
+            "Groq API key is not configured. Add `GROQ_API_KEY` to `.streamlit/secrets.toml` "
+            "or set it as an environment variable before starting Streamlit."
+        )
+        return
+
+    try:
+        from groq import Groq
+    except ImportError:
+        yield "Groq SDK is not installed. Run `.\.venv\Scripts\python.exe -m pip install groq` and restart Streamlit."
+        return
+
+    try:
+        client = Groq(api_key=api_key)
+        completion = client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You explain ECG model predictions in clear, cautious language. "
+                        "You do not diagnose. You recommend professional medical review."
+                    ),
+                },
+                {"role": "user", "content": build_disease_guidance_prompt(results)},
+            ],
+            temperature=0.4,
+            max_completion_tokens=900,
+            top_p=1,
+            stream=True,
+            stop=None,
+        )
+
+        for chunk in completion:
+            yield chunk.choices[0].delta.content or ""
+    except Exception as e:
+        yield f"Unable to fetch Groq disease guidance: {e}"
+
 # ==============================================================================
 # Pages
 # ==============================================================================
@@ -289,6 +363,13 @@ def render_analysis_results(results):
             </div>
         </div>
         """, unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    st.markdown("### AI disease details and next steps")
+    st.caption("Generated from the model prediction using Groq. This is educational guidance, not a diagnosis.")
+    with st.container(border=True):
+        st.write_stream(stream_groq_disease_guidance(results))
 
     st.markdown("---")
     
