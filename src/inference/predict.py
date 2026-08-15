@@ -3,12 +3,14 @@ CARDIOVISION - Inference Pipeline
 End-to-end prediction from raw ECG file to class probabilities and explanation.
 """
 
+from pathlib import Path
 from typing import Dict, Optional, Tuple
 
 import numpy as np
 import torch
 import torch.nn.functional as F
 import wfdb
+from PIL import Image
 
 from src.utils.logger import get_logger
 from src.preprocessing.signal_quality import check_signal_quality
@@ -162,4 +164,64 @@ class CardiovisionPredictor:
             return {
                 "status": "error",
                 "message": f"Failed to load or process record: {e}"
+            }
+
+    def predict_from_image(self, image_path: str, generate_explanation: bool = True) -> Dict:
+        """
+        Run inference directly on a pre-generated CWT/scalogram image.
+
+        Args:
+            image_path: Path to a PNG/JPG/JPEG image.
+            generate_explanation: Whether to generate Grad-CAM heatmap.
+
+        Returns:
+            Dictionary with prediction results and image-based intermediate data.
+        """
+        try:
+            image_size = tuple(self.cfg.model.input_size)
+            image = Image.open(image_path).convert("RGB")
+            image = image.resize((image_size[1], image_size[0]))
+            scalogram = np.array(image).transpose(2, 0, 1).astype(np.float32) / 255.0
+
+            result = {
+                "status": "success",
+                "message": "",
+                "input_type": "image",
+                "source_name": Path(image_path).name,
+                "scalogram_chw": scalogram,
+            }
+
+            input_tensor = torch.from_numpy(scalogram).unsqueeze(0).to(self.device)
+
+            with torch.no_grad():
+                logits = self.model(input_tensor)
+                probs = F.softmax(logits, dim=1)[0].cpu().numpy()
+
+            pred_idx = int(np.argmax(probs))
+            pred_class = self.class_names[pred_idx]
+            confidence = probs[pred_idx]
+
+            result["predicted_class_idx"] = pred_idx
+            result["predicted_class_name"] = pred_class
+            result["confidence"] = float(confidence)
+            result["probabilities"] = {name: float(p) for name, p in zip(self.class_names, probs)}
+
+            if generate_explanation:
+                heatmap = self.grad_cam(input_tensor, target_class=pred_idx)
+                img_hwc = scalogram.transpose(1, 2, 0)
+                overlay = overlay_heatmap(
+                    img_hwc,
+                    heatmap,
+                    alpha=self.cfg.explainability.alpha,
+                )
+
+                result["gradcam_heatmap"] = heatmap
+                result["gradcam_overlay"] = overlay
+
+            return result
+        except Exception as e:
+            logger.error(f"Failed to load or process image {image_path}: {e}")
+            return {
+                "status": "error",
+                "message": f"Failed to load or process image: {e}",
             }

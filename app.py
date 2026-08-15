@@ -197,18 +197,34 @@ def page_analysis():
     display_disclaimer()
     
     st.markdown("### Upload ECG Record")
-    st.info("Please upload both `.dat` and `.hea` files for a single ECG record.")
+    st.info("Upload either a WFDB `.dat` + `.hea` pair, or a pre-generated CWT/scalogram image (`.png`, `.jpg`, `.jpeg`).")
     
-    uploaded_files = st.file_uploader("Upload WFDB files", type=['dat', 'hea'], accept_multiple_files=True)
+    uploaded_files = st.file_uploader(
+        "Upload ECG files or scalogram image",
+        type=['dat', 'hea', 'png', 'jpg', 'jpeg'],
+        accept_multiple_files=True
+    )
     
     if uploaded_files:
-        dat_file = next((f for f in uploaded_files if f.name.endswith('.dat')), None)
-        hea_file = next((f for f in uploaded_files if f.name.endswith('.hea')), None)
+        image_file = next(
+            (f for f in uploaded_files if f.name.lower().endswith(('.png', '.jpg', '.jpeg'))),
+            None
+        )
+        dat_file = next((f for f in uploaded_files if f.name.lower().endswith('.dat')), None)
+        hea_file = next((f for f in uploaded_files if f.name.lower().endswith('.hea')), None)
         
-        if dat_file and hea_file:
-            with st.spinner("Processing ECG..."):
-                # Save to temp dir for WFDB to read
-                with tempfile.TemporaryDirectory() as tmpdirname:
+        with st.spinner("Processing ECG..."):
+            with tempfile.TemporaryDirectory() as tmpdirname:
+                if image_file:
+                    image_path = Path(tmpdirname) / image_file.name
+                    with open(image_path, "wb") as f:
+                        f.write(image_file.getbuffer())
+
+                    results = predictor.predict_from_image(
+                        str(image_path),
+                        generate_explanation=st.session_state.show_heatmap
+                    )
+                elif dat_file and hea_file:
                     # Strip extensions to match WFDB requirements
                     record_name = dat_file.name[:-4]
                     
@@ -223,14 +239,17 @@ def page_analysis():
                     # Run Inference
                     record_path = str(Path(tmpdirname) / record_name)
                     results = predictor.predict_from_file(record_path, generate_explanation=st.session_state.show_heatmap)
+                else:
+                    results = {
+                        "status": "error",
+                        "message": "Please upload either one image file, or BOTH the .dat and .hea files."
+                    }
                     
-            if results["status"] == "success":
-                st.success("Analysis complete!")
-                render_analysis_results(results)
-            else:
-                st.error(f"Error during analysis: {results['message']}")
+        if results["status"] == "success":
+            st.success("Analysis complete!")
+            render_analysis_results(results)
         else:
-            st.warning("Please upload BOTH the .dat and .hea files.")
+            st.error(f"Error during analysis: {results['message']}")
 
 def render_analysis_results(results):
     st.markdown("---")
@@ -293,6 +312,13 @@ def render_analysis_results(results):
             
         st.markdown("---")
 
+    if "raw_signal" not in results:
+        st.markdown("### Uploaded Scalogram")
+        scalo_hwc = results["scalogram_chw"].transpose(1, 2, 0)
+        fig_scalo = plot_scalogram(scalo_hwc, title="")
+        st.pyplot(fig_scalo)
+        return
+
     # 3. Preprocessing Visualization
     st.markdown("### 📈 Signal Processing Pipeline")
     
@@ -354,7 +380,9 @@ def page_performance():
         st.markdown("### Per-Class Metrics")
         if "per_class" in metrics:
             df_metrics = pd.DataFrame(metrics["per_class"]).T
-            df_metrics = df_metrics.applymap(lambda x: f"{x:.2%}")
+            df_metrics = df_metrics.map(
+                lambda x: f"{x:.2%}" if isinstance(x, (int, float)) else x
+            )
             st.dataframe(df_metrics, use_container_width=True)
             
     else:
