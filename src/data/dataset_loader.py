@@ -207,6 +207,7 @@ def create_data_loaders(
     num_workers: int = 4,
     image_size: Tuple[int, int] = (224, 224),
     augmentation_config: Optional[Dict] = None,
+    use_weighted_sampler: bool = False,
 ) -> Tuple[torch.utils.data.DataLoader, torch.utils.data.DataLoader, torch.utils.data.DataLoader]:
     """
     Create PyTorch DataLoaders for train, val, and test splits.
@@ -221,6 +222,7 @@ def create_data_loaders(
         num_workers: Number of data loading workers.
         image_size: Image dimensions.
         augmentation_config: Augmentation parameters.
+        use_weighted_sampler: Whether to balance train batches by inverse class frequency.
 
     Returns:
         Tuple of (train_loader, val_loader, test_loader).
@@ -248,8 +250,13 @@ def create_data_loaders(
         augment=False,
     )
 
+    train_sampler = build_weighted_sampler(train_df) if use_weighted_sampler else None
+    if train_sampler is not None:
+        logger.info("Using weighted random sampler for balanced training batches.")
+
     train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=batch_size, shuffle=True,
+        train_dataset, batch_size=batch_size, shuffle=train_sampler is None,
+        sampler=train_sampler,
         num_workers=num_workers, pin_memory=True, drop_last=True
     )
     val_loader = torch.utils.data.DataLoader(

@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { gsap } from "gsap";
 import PillNav from "@/components/PillNav";
+import { loadPredictionResult, type PredictionResult, type SignalPoint } from "@/lib/api";
 
 const navItems = [
   { href: "/", label: "Home" },
@@ -12,28 +13,6 @@ const navItems = [
   { href: "#about", label: "About" },
   { href: "https://github.com", label: "GitHub" },
 ];
-
-// Mock prediction data
-const predictionData = {
-  id: "ECG-2026-001",
-  timestamp: "August 14, 2026 at 3:42 PM",
-  predictedClass: "Myocardial Infarction",
-  confidence: 92.4,
-  riskLevel: "High",
-  probabilities: [
-    { condition: "Normal ECG", probability: 2.1 },
-    { condition: "Myocardial Infarction", probability: 92.4 },
-    { condition: "Cardiac Arrhythmia", probability: 3.2 },
-    { condition: "Left Ventricular Hypertrophy", probability: 1.8 },
-    { condition: "ST/T Wave Abnormalities", probability: 0.5 },
-  ],
-  clinicalSummary:
-    "The AI model has detected patterns consistent with myocardial infarction with high confidence. Key features include ST-segment elevation and abnormal Q-waves in multiple leads.",
-  recommendation:
-    "Immediate medical attention recommended. This prediction should be reviewed by a qualified cardiologist. Do not use as sole basis for clinical decisions.",
-  inferenceTime: 2.34,
-  modelVersion: "CardioViT-v1.2.0",
-};
 
 function ConfidenceGauge({ confidence }: { confidence: number }) {
   const gaugeRef = useRef<HTMLDivElement>(null);
@@ -87,7 +66,26 @@ function ConfidenceGauge({ confidence }: { confidence: number }) {
   );
 }
 
-function WaveformViewer() {
+function WaveformViewer({ points }: { points: SignalPoint[] }) {
+  const polyline = useMemo(() => {
+    if (points.length === 0) {
+      return "";
+    }
+
+    const minY = Math.min(...points.map((point) => point.y));
+    const maxY = Math.max(...points.map((point) => point.y));
+    const yRange = maxY - minY || 1;
+    const xRange = Math.max(points.length - 1, 1);
+
+    return points
+      .map((point, index) => {
+        const x = (index / xRange) * 800;
+        const y = 360 - ((point.y - minY) / yRange) * 320;
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      })
+      .join(" ");
+  }, [points]);
+
   return (
     <div className="card-elevated rounded-xl border border-hairline p-6">
       <h3
@@ -121,21 +119,17 @@ function WaveformViewer() {
           </defs>
           <rect width="800" height="400" fill="url(#grid)" />
           
-          {/* ECG waveform - Lead I */}
-          <path
-            d="M0 200 L50 200 L60 180 L70 200 L80 220 L90 200 L100 190 L110 200 L150 200 L160 180 L170 200 L180 220 L190 200 L200 190 L210 200 L250 200 L260 180 L270 200 L280 220 L290 200 L300 190 L310 200 L350 200 L360 180 L370 200 L380 220 L390 200 L400 190 L410 200 L450 200 L460 180 L470 200 L480 220 L490 200 L500 190 L510 200 L550 200 L560 180 L570 200 L580 220 L590 200 L600 190 L610 200 L650 200 L660 180 L670 200 L680 220 L690 200 L700 190 L710 200 L750 200 L760 180 L770 200 L780 220 L790 200 L800 200"
-            stroke="#0070f3"
-            strokeWidth="2"
-            fill="none"
-          />
+          {polyline ? (
+            <polyline points={polyline} stroke="#0070f3" strokeWidth="2" fill="none" />
+          ) : null}
         </svg>
       </div>
-      <p className="mt-3 text-sm text-body">12-lead ECG - Lead I shown</p>
+      <p className="mt-3 text-sm text-body">Filtered ECG preview - primary lead</p>
     </div>
   );
 }
 
-function ScalogramView() {
+function ScalogramView({ image }: { image: string }) {
   return (
     <div className="card-elevated rounded-xl border border-hairline p-6">
       <h3
@@ -144,12 +138,7 @@ function ScalogramView() {
       >
         CWT Scalogram
       </h3>
-      <div className="aspect-square w-full overflow-hidden rounded-lg bg-gradient-to-br from-violet via-cyan to-pink">
-        {/* Placeholder for actual scalogram image */}
-        <div className="flex h-full items-center justify-center">
-          <p className="text-sm text-white/70">Scalogram visualization</p>
-        </div>
-      </div>
+      <img src={image} alt="CWT scalogram" className="aspect-square w-full rounded-lg object-cover" />
       <p className="mt-3 text-sm text-body">
         Continuous Wavelet Transform representation
       </p>
@@ -157,7 +146,7 @@ function ScalogramView() {
   );
 }
 
-function GradCAMHeatmap() {
+function GradCAMHeatmap({ image }: { image: string | null }) {
   return (
     <div className="card-elevated rounded-xl border border-hairline p-6">
       <h3
@@ -166,12 +155,13 @@ function GradCAMHeatmap() {
       >
         Attention Heatmap (Grad-CAM)
       </h3>
-      <div className="aspect-square w-full overflow-hidden rounded-lg bg-gradient-to-br from-error/20 via-warning/30 to-link/20">
-        {/* Placeholder for actual Grad-CAM heatmap */}
-        <div className="flex h-full items-center justify-center">
-          <p className="text-sm text-body">Explainability visualization</p>
+      {image ? (
+        <img src={image} alt="Grad-CAM attention heatmap" className="aspect-square w-full rounded-lg object-cover" />
+      ) : (
+        <div className="flex aspect-square w-full items-center justify-center rounded-lg bg-hairline-soft">
+          <p className="text-sm text-body">Grad-CAM unavailable for this result</p>
         </div>
-      </div>
+      )}
       <p className="mt-3 text-sm text-body">
         Regions influencing the prediction highlighted
       </p>
@@ -181,6 +171,7 @@ function GradCAMHeatmap() {
 
 export default function ResultsPage() {
   const [showToast, setShowToast] = useState(false);
+  const [predictionData] = useState<PredictionResult | null>(() => loadPredictionResult());
 
   const handleDownloadPDF = () => {
     setShowToast(true);
@@ -188,6 +179,10 @@ export default function ResultsPage() {
   };
 
   const handleDownloadJSON = () => {
+    if (!predictionData) {
+      return;
+    }
+
     const dataStr = JSON.stringify(predictionData, null, 2);
     const dataBlob = new Blob([dataStr], { type: "application/json" });
     const url = URL.createObjectURL(dataBlob);
@@ -197,6 +192,34 @@ export default function ResultsPage() {
     link.click();
     URL.revokeObjectURL(url);
   };
+
+  if (!predictionData) {
+    return (
+      <div className="relative min-h-screen bg-canvas">
+        <PillNav
+          logo="/logo.svg"
+          logoAlt="Cardiovision"
+          items={navItems}
+          baseColor="#171717"
+          pillColor="#ffffff"
+          hoveredPillTextColor="#ffffff"
+          pillTextColor="#171717"
+        />
+        <div className="mx-auto flex min-h-screen max-w-2xl flex-col items-center justify-center px-6 text-center">
+          <h1 className="text-3xl font-semibold tracking-tight text-ink">No analysis result found</h1>
+          <p className="mt-4 text-sm leading-relaxed text-body">
+            Upload a matching WFDB .hea and .dat record, or run the sample ECG analysis from the home page.
+          </p>
+          <Link
+            href="/"
+            className="mt-8 inline-flex h-10 items-center rounded-full bg-ink px-6 text-base font-medium text-on-primary transition-opacity hover:opacity-90"
+          >
+            Back to Home
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative min-h-screen bg-canvas">
@@ -286,7 +309,7 @@ export default function ResultsPage() {
                     <div className="mb-2 flex items-center justify-between text-sm">
                       <span className="text-body">{item.condition}</span>
                       <span className="font-mono text-ink">
-                        {item.probability}%
+                        {item.probability.toFixed(1)}%
                       </span>
                     </div>
                     <div className="h-2 overflow-hidden rounded-full bg-hairline-soft">
@@ -313,7 +336,7 @@ export default function ResultsPage() {
               </p>
               <div className="rounded-lg border border-warning/20 bg-warning-soft p-4">
                 <p className="text-sm font-medium text-warning-deep">
-                  ⚠️ Medical Recommendation
+                  Medical Recommendation
                 </p>
                 <p className="mt-2 text-sm leading-relaxed text-body">
                   {predictionData.recommendation}
@@ -324,9 +347,9 @@ export default function ResultsPage() {
 
           {/* Right Column */}
           <div className="space-y-8">
-            <WaveformViewer />
-            <ScalogramView />
-            <GradCAMHeatmap />
+            <WaveformViewer points={predictionData.signalPreview} />
+            <ScalogramView image={predictionData.scalogramImage} />
+            <GradCAMHeatmap image={predictionData.gradcamImage} />
           </div>
         </div>
 
@@ -359,6 +382,13 @@ export default function ResultsPage() {
           </div>
           <div>
             <span className="font-mono">Model:</span> {predictionData.modelVersion}
+          </div>
+          <div>
+            <span className="font-mono">R-Peaks:</span> {predictionData.rPeakCount}
+          </div>
+          <div>
+            <span className="font-mono">Heart Rate:</span>{" "}
+            {predictionData.heartRateBpm ? `${predictionData.heartRateBpm} BPM` : "Unavailable"}
           </div>
           <div>
             <span className="font-mono">Dataset:</span> PTB-XL (21,837 records)

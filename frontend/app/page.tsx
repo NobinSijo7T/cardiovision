@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import PillNav from "@/components/PillNav";
+import { analyzeFiles, analyzeSample, savePredictionResult } from "@/lib/api";
 
 const navItems = [
   { href: "/", label: "Home" },
@@ -30,9 +31,9 @@ const pipelineSteps = [
 ];
 
 const modelPerformance = [
-  { metric: "Accuracy", value: "91.2%" },
-  { metric: "Macro F1", value: "88.7%" },
-  { metric: "ROC-AUC", value: "0.94" },
+  { metric: "Accuracy", value: "56.5%" },
+  { metric: "Macro F1", value: "47.9%" },
+  { metric: "ROC-AUC", value: "0.82" },
   { metric: "Dataset", value: "PTB-XL" },
 ];
 
@@ -42,8 +43,19 @@ const modelPerformance = [
 
 function UploadCard() {
   const [dragActive, setDragActive] = useState(false);
-  const [fileName, setFileName] = useState<string | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
+
+  const hasDatFile = selectedFiles.some((file) => file.name.endsWith(".dat"));
+  const hasHeaFile = selectedFiles.some((file) => file.name.endsWith(".hea"));
+  const canAnalyze = hasDatFile && hasHeaFile && !isAnalyzing;
+
+  const setFiles = (files: FileList | File[]) => {
+    setError(null);
+    setSelectedFiles(Array.from(files));
+  };
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -59,24 +71,49 @@ function UploadCard() {
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      setFileName(e.dataTransfer.files[0].name);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      setFiles(e.dataTransfer.files);
     }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     e.preventDefault();
-    if (e.target.files && e.target.files[0]) {
-      setFileName(e.target.files[0].name);
+    if (e.target.files && e.target.files.length > 0) {
+      setFiles(e.target.files);
     }
   };
 
-  const handleAnalyze = () => {
-    router.push("/analyzing");
+  const handleAnalyze = async () => {
+    if (!canAnalyze) {
+      setError("Upload both the .hea header and .dat signal file for one WFDB record.");
+      return;
+    }
+
+    setIsAnalyzing(true);
+    setError(null);
+    try {
+      const result = await analyzeFiles(selectedFiles);
+      savePredictionResult(result);
+      router.push("/results");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Analysis failed.");
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
-  const handleUseSample = () => {
-    setFileName("sample-ecg-001.dat");
+  const handleUseSample = async () => {
+    setIsAnalyzing(true);
+    setError(null);
+    try {
+      const result = await analyzeSample();
+      savePredictionResult(result);
+      router.push("/results");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Sample analysis failed.");
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
   return (
@@ -97,10 +134,12 @@ function UploadCard() {
         </div>
         <div>
           <h3 className="text-xl font-semibold tracking-tight text-ink">
-            {fileName ? fileName : "Drop your ECG file here"}
+            {selectedFiles.length > 0
+              ? selectedFiles.map((file) => file.name).join(" + ")
+              : "Drop your ECG record here"}
           </h3>
           <p className="mt-2 text-sm text-body">
-            Supports .hea, .dat, .mat, .csv, .png, .jpg, .jpeg formats
+            Upload the matching .hea and .dat files for one WFDB ECG record
           </p>
         </div>
         <div className="flex items-center justify-center gap-3">
@@ -112,23 +151,27 @@ function UploadCard() {
               id="file-upload"
               type="file"
               className="hidden"
-              accept=".hea,.dat,.mat,.csv,.png,.jpg,.jpeg"
+              accept=".hea,.dat"
+              multiple
               onChange={handleChange}
             />
           </label>
           <button 
             onClick={handleUseSample}
+            disabled={isAnalyzing}
             className="inline-flex h-10 items-center rounded-full border border-hairline bg-canvas-elevated px-6 text-base font-medium text-ink transition-colors hover:bg-hairline-soft"
           >
             Use Sample ECG
           </button>
         </div>
-        {fileName && (
+        {error && <p className="text-sm font-medium text-error">{error}</p>}
+        {selectedFiles.length > 0 && (
           <button 
             onClick={handleAnalyze}
-            className="mt-4 inline-flex h-10 items-center rounded-full bg-link px-6 text-base font-medium text-on-primary transition-opacity hover:opacity-90"
+            disabled={!canAnalyze}
+            className="mt-4 inline-flex h-10 items-center rounded-full bg-link px-6 text-base font-medium text-on-primary transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Analyze ECG
+            {isAnalyzing ? "Analyzing..." : "Analyze ECG"}
           </button>
         )}
       </div>
@@ -204,7 +247,7 @@ export default function Home() {
               Five cardiac diagnoses detected by CardioViT
               </h2>
               <p className="mt-6 text-base leading-relaxed text-body">
-                The model was trained on the PTB-XL dataset with 21,837 ECG recordings and can identify five major cardiovascular conditions with high accuracy.
+                The model was trained on the PTB-XL dataset and reports five cardiovascular classes with the latest saved evaluation metrics.
               </p>
             </div>
             <div className="space-y-3">

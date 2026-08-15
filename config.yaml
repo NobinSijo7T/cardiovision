@@ -93,9 +93,9 @@ model:
 
 # --- Training ---
 training:
-  epochs: 50
+  epochs: 40
   batch_size: 16
-  num_workers: 4
+  num_workers: 0
 
   optimizer:
     name: "AdamW"
@@ -114,11 +114,12 @@ training:
     label_smoothing: 0.1
 
   early_stopping:
-    enabled: true
-    monitor: "val_loss"
+    enabled: false
+    monitor: "val_macro_f1"
     patience: 8
     min_delta: 0.001
 
+  use_weighted_sampler: true
   mixed_precision: true
   gradient_clip_norm: 1.0
 

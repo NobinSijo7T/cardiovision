@@ -29,6 +29,13 @@ from src.training.losses import build_criterion
 from src.training.train import train_epoch
 from src.training.validate import validate_epoch
 
+
+def is_improvement(current_value, best_value, monitor, min_delta):
+    if monitor == "val_loss":
+        return current_value < best_value - min_delta
+    return current_value > best_value + min_delta
+
+
 def main():
     cfg = load_config()
     set_seed(cfg.reproducibility.seed, cfg.reproducibility.deterministic)
@@ -55,7 +62,8 @@ def main():
         batch_size=cfg.training.batch_size,
         num_workers=cfg.training.num_workers,
         image_size=tuple(cfg.model.input_size),
-        augmentation_config=cfg.training.augmentation.__dict__
+        augmentation_config=cfg.training.augmentation.__dict__,
+        use_weighted_sampler=cfg.training.use_weighted_sampler,
     )
     
     # Class weights
@@ -111,7 +119,8 @@ def main():
     scaler = torch.cuda.amp.GradScaler() if (cfg.training.mixed_precision and device.type == 'cuda') else None
     
     # Training Loop
-    best_val_loss = float('inf')
+    monitor = cfg.training.early_stopping.monitor
+    best_score = float('inf') if monitor == "val_loss" else float('-inf')
     epochs_no_improve = 0
     checkpoint_dir = Path(cfg.output.checkpoints_dir)
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
@@ -133,16 +142,21 @@ def main():
         if scheduler is not None:
             scheduler.step()
             
-        history.append({
+        current_metrics = {
             'epoch': epoch,
             'train_loss': train_loss, 'train_acc': train_acc,
             'val_loss': val_loss, 'val_acc': val_acc,
             'val_macro_f1': val_metrics.get('macro_f1', 0)
-        })
+        }
+        history.append(current_metrics)
+        if monitor not in current_metrics:
+            logger.error(f"Unknown early stopping monitor: {monitor}")
+            sys.exit(1)
+        current_score = current_metrics[monitor]
         
         # Checkpointing
-        if val_loss < best_val_loss:
-            best_val_loss = val_loss
+        if is_improvement(current_score, best_score, monitor, cfg.training.early_stopping.min_delta):
+            best_score = current_score
             epochs_no_improve = 0
             best_model_path = checkpoint_dir / "best_model.pth"
             torch.save({
@@ -150,8 +164,15 @@ def main():
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
                 'val_loss': val_loss,
+                'val_acc': val_acc,
+                'val_macro_f1': val_metrics.get('macro_f1', 0),
+                'monitor': monitor,
+                'best_score': best_score,
             }, best_model_path)
-            logger.info(f"Saved new best model to {best_model_path}")
+            logger.info(
+                f"Saved new best model to {best_model_path} "
+                f"({monitor}={current_score:.4f})"
+            )
         else:
             epochs_no_improve += 1
             if cfg.training.early_stopping.enabled and epochs_no_improve >= cfg.training.early_stopping.patience:

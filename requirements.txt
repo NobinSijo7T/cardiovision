@@ -25,6 +25,9 @@ opencv-python>=5.0.0
 
 # Web Interface
 streamlit>=1.28.0
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+python-multipart>=0.0.9
 
 # Utilities
 tqdm>=4.65.0

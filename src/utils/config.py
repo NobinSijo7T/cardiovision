@@ -154,6 +154,7 @@ class TrainingConfig:
     scheduler: SchedulerConfig = field(default_factory=SchedulerConfig)
     loss: LossConfig = field(default_factory=LossConfig)
     early_stopping: EarlyStoppingConfig = field(default_factory=EarlyStoppingConfig)
+    use_weighted_sampler: bool = True
     mixed_precision: bool = True
     gradient_clip_norm: float = 1.0
     augmentation: AugmentationConfig = field(default_factory=AugmentationConfig)
@@ -278,7 +279,10 @@ def _build_config_from_dict(data: dict) -> Config:
     if 'training' in data:
         tr = data['training']
         train_cfg = TrainingConfig()
-        for simple_key in ['epochs', 'batch_size', 'num_workers', 'mixed_precision', 'gradient_clip_norm']:
+        for simple_key in [
+            'epochs', 'batch_size', 'num_workers', 'use_weighted_sampler',
+            'mixed_precision', 'gradient_clip_norm'
+        ]:
             if simple_key in tr:
                 setattr(train_cfg, simple_key, tr[simple_key])
         if 'optimizer' in tr:
